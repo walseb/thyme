@@ -2,6 +2,6 @@
 
 for os in darwin windows linux; do
     for arch in 386; do
-        env GOOS="$os" GOARCH="$arch" go build -o "./.bin/thyme-$os-$arch" ./cmd/thyme
+        env GOOS="$os" GOARCH="$arch" go build -o "thyme-$os-$arch" ./cmd/thyme
     done
 done

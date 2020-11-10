@@ -1,0 +1,3 @@
+[submodule "deps/go-flags"]
+	path = deps/go-flags
+	url = https://github.com/jessevdk/go-flags
