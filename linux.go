@@ -2,11 +2,10 @@ package thyme
 
 import (
 	"fmt"
-	"os/exec"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
+	"io/ioutil"
 )
 
 func init() {
@@ -38,122 +37,18 @@ Note: this command prints out this message regardless of whether the dependencie
 }
 
 func (t *LinuxTracker) Snap() (*Snapshot, error) {
-	var viewWidth, viewHeight int
-	{
-		out, err := exec.Command("bash", "-c", "xdpyinfo | grep dimensions").Output()
-		if err != nil {
-			return nil, fmt.Errorf("xdpyinfo failed with error: %s. Try running `xdpyinfo | grep dimensions` to diagnose.", err)
-		}
-		matches := dimRx.FindStringSubmatch(string(out))
-		if len(matches) != 3 {
-			return nil, fmt.Errorf("could not parse viewport dimensions from output line %q", string(out))
-		}
-		w, err := strconv.Atoi(matches[1])
-		if err != nil {
-			return nil, err
-		}
-		h, err := strconv.Atoi(matches[2])
-		if err != nil {
-			return nil, err
-		}
-		viewWidth, viewHeight = w, h
-	}
-
 	var windows []*Window
 	{
-		out, err := exec.Command("wmctrl", "-l").Output()
+		out, err := ioutil.ReadFile("/tmp/emacs-active-window")
 		if err != nil {
-			return nil, fmt.Errorf("wmctrl failed with error: %s. Try running `wmctrl -l` to diagnose.", err)
+			return nil, fmt.Errorf("reading /tmp/emacs-active-window failed with error: %s.", err)
 		}
-		lines := strings.Split(string(out), "\n")
-		for _, line := range lines {
-			fields := strings.Fields(line)
-			if len(fields) < 4 {
-				continue
-			}
-			id_, desktop_, name := fields[0], fields[1], strings.Join(fields[3:], " ")
-			id, err := strconv.ParseInt(id_, 0, 64)
-			if err != nil {
-				return nil, err
-			}
-			desktop, err := strconv.ParseInt(desktop_, 0, 64)
-			if err != nil {
-				return nil, err
-			}
-			w := Window{ID: id, Desktop: desktop, Name: name}
-			if !w.IsSystem() {
-				windows = append(windows, &w)
-			}
-		}
+
+		var window = Window{ID: 0, Desktop: -1, Name: string(out)}
+		windows = append(windows, &window)
 	}
 
-	var currentDesktop int64
-	{
-		out, err := exec.Command("wmctrl", "-d").Output()
-		if err != nil {
-			return nil, err
-		}
-		lines := strings.Split(string(out), "\n")
-		for _, line := range lines {
-			fields := strings.Fields(line)
-			if len(fields) < 2 {
-				continue
-			}
-			id_, mode := fields[0], fields[1]
-			id, err := strconv.ParseInt(id_, 0, 64)
-			if err != nil {
-				return nil, err
-			}
-			if "*" == mode {
-				currentDesktop = id
-			}
-		}
-	}
-
-	var visible []int64
-	{
-		for _, window := range windows {
-			out_, err := exec.Command("xwininfo", "-id", fmt.Sprintf("%d", window.ID), "-stats").Output()
-			if err != nil {
-				return nil, fmt.Errorf("xwininfo failed with error: %s", err)
-			}
-			out := string(out_)
-			x, err := parseWinDim(xRx, out, "X")
-			if err != nil {
-				return nil, err
-			}
-			y, err := parseWinDim(yRx, out, "Y")
-			if err != nil {
-				return nil, err
-			}
-			w, err := parseWinDim(wRx, out, "W")
-			if err != nil {
-				return nil, err
-			}
-			h, err := parseWinDim(hRx, out, "H")
-			if err != nil {
-				return nil, err
-			}
-			if window.IsOnDesktop(currentDesktop) && isVisible(x, y, w, h, viewHeight, viewWidth) {
-				visible = append(visible, window.ID)
-			}
-		}
-	}
-
-	var active int64
-	{
-		out, err := exec.Command("xdotool", "getactivewindow").Output()
-		if err != nil {
-			return nil, fmt.Errorf("xdotool failed with error: %s. Try running `xdotool getactivewindow` to diagnose.", err)
-		}
-		id, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		active = id
-	}
-
-	return &Snapshot{Windows: windows, Active: active, Visible: visible, Time: time.Now()}, nil
+	return &Snapshot{Windows: windows, Active: 0, Visible: nil, Time: time.Now()}, nil
 }
 
 // isVisible checks if the window is visible in the current viewport.
